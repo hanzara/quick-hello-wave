@@ -37,7 +37,7 @@ interface AppSidebarProps {
 
 const menuItems = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { id: "payments", label: "Payments - Simple & Advanced", icon: Send },
+  { id: "payments", label: "Payment", icon: Send },
   { id: "wallet", label: "Multi-Currency Virtual Wallet", icon: Vault },
   { id: "cards", label: "Virtual & Physical Cards", icon: CreditCard },
   { id: "routing", label: "Smart Routing", icon: ArrowDownUp },

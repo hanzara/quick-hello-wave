@@ -27,8 +27,10 @@ import {
   Users,
   Shuffle
 } from "lucide-react";
-import { useWallet } from "@/hooks/useWallet";
+import { useEnhancedWallet } from "@/hooks/useEnhancedWallet";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
+import { supabase } from "@/integrations/supabase/client";
 
 // Payment Methods with detailed sub-options
 const paymentMethods = [
@@ -223,15 +225,28 @@ export const PaymentsSection = () => {
     paymentMethod: ""
   });
 
-  const { wallets, sendPayment, loading } = useWallet();
+  const { walletCurrencies, sendPayment, getCurrencyBalance, loading } = useEnhancedWallet();
   const { toast } = useToast();
+  const { user } = useAuth();
 
   const handlePaymentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!paymentData.recipient || !paymentData.amount) {
+    if (!paymentData.recipient || !paymentData.amount || !selectedPaymentMethod || !selectedSubOption) {
       toast({
         title: "Error",
-        description: "Please fill in all required fields",
+        description: "Please fill in all required fields and select payment method",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const amount = parseFloat(paymentData.amount);
+    const availableBalance = getCurrencyBalance(paymentData.currency);
+
+    if (amount > availableBalance) {
+      toast({
+        title: "Insufficient Balance",
+        description: `You don't have enough ${paymentData.currency}. Available: ${availableBalance}`,
         variant: "destructive",
       });
       return;
@@ -239,20 +254,46 @@ export const PaymentsSection = () => {
 
     setProcessing(true);
     try {
-      await sendPayment({
-        recipient: paymentData.recipient,
-        amount: parseFloat(paymentData.amount),
-        currency: paymentData.currency,
-        message: paymentData.description
-      });
+      // Create transaction record in database
+      const { data: transaction, error: transactionError } = await supabase
+        .from('enhanced_wallet_transactions')
+        .insert({
+          user_id: user?.id,
+          transaction_type: 'send',
+          from_currency: paymentData.currency,
+          from_amount: amount,
+          description: paymentData.description || `Payment to ${paymentData.recipient}`,
+          status: 'completed',
+          metadata: {
+            recipient: paymentData.recipient,
+            paymentMethod: selectedPaymentMethod,
+            subOption: selectedSubOption,
+            accountNumber: paymentData.accountNumber
+          }
+        })
+        .select()
+        .single();
+
+      if (transactionError) throw transactionError;
+
+      // Update wallet balance
+      await sendPayment(paymentData.recipient, paymentData.currency, amount, paymentData.description);
       
       setPaymentData({ recipient: "", amount: "", currency: "USD", description: "", accountNumber: "", paymentMethod: "" });
+      setSelectedPaymentMethod("");
+      setSelectedSubOption("");
+      
       toast({
-        title: "Success",
-        description: "Payment initiated successfully",
+        title: "Payment Successful",
+        description: `Payment of ${amount} ${paymentData.currency} sent successfully`,
       });
     } catch (error) {
       console.error("Payment error:", error);
+      toast({
+        title: "Payment Failed",
+        description: "Failed to process payment. Please try again.",
+        variant: "destructive",
+      });
     }
     setProcessing(false);
   };
@@ -269,21 +310,25 @@ export const PaymentsSection = () => {
             </CardTitle>
             <CardDescription>Choose your payment approach</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-3">
-            {paymentTypes.map((type) => (
-              <Button
-                key={type.name}
-                variant={selectedPaymentType === type.name.toLowerCase().replace(/[^a-z]/g, '-') ? "default" : "outline"}
-                className="w-full justify-start h-auto py-3"
-                onClick={() => setSelectedPaymentType(type.name.toLowerCase().replace(/[^a-z]/g, '-'))}
-              >
-                <type.icon className="w-4 h-4 mr-3" />
-                <div className="text-left">
-                  <div className="font-medium text-sm">{type.name}</div>
-                  <div className="text-xs text-muted-foreground">{type.description}</div>
-                </div>
-              </Button>
-            ))}
+          <CardContent>
+            <Select value={selectedPaymentType} onValueChange={setSelectedPaymentType}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Select payment type" />
+              </SelectTrigger>
+              <SelectContent>
+                {paymentTypes.map((type) => (
+                  <SelectItem key={type.name} value={type.name.toLowerCase().replace(/[^a-z]/g, '-')}>
+                    <div className="flex items-center gap-3">
+                      <type.icon className="w-4 h-4" />
+                      <div>
+                        <div className="font-medium">{type.name}</div>
+                        <div className="text-xs text-muted-foreground">{type.description}</div>
+                      </div>
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </CardContent>
         </Card>
 
@@ -296,26 +341,30 @@ export const PaymentsSection = () => {
             </CardTitle>
             <CardDescription>How would you like to pay?</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-3">
-            {paymentMethods.map((method) => (
-              <Button
-                key={method.name}
-                variant={selectedPaymentMethod === method.type ? "default" : "outline"}
-                className="w-full justify-start h-auto py-3"
-                onClick={() => {
-                  setSelectedPaymentMethod(method.type);
-                  setSelectedSubOption(""); // Reset sub-option when method changes
-                }}
-              >
-                <method.icon className="w-4 h-4 mr-3" />
-                <div className="text-left">
-                  <div className="font-medium text-sm">{method.name}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {method.methods.slice(0, 2).join(', ')}
-                  </div>
-                </div>
-              </Button>
-            ))}
+          <CardContent>
+            <Select value={selectedPaymentMethod} onValueChange={(value) => {
+              setSelectedPaymentMethod(value);
+              setSelectedSubOption("");
+            }}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Select payment method" />
+              </SelectTrigger>
+              <SelectContent>
+                {paymentMethods.map((method) => (
+                  <SelectItem key={method.type} value={method.type}>
+                    <div className="flex items-center gap-3">
+                      <method.icon className="w-4 h-4" />
+                      <div>
+                        <div className="font-medium">{method.name}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {method.methods.length} options available
+                        </div>
+                      </div>
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </CardContent>
         </Card>
       </div>
@@ -333,26 +382,21 @@ export const PaymentsSection = () => {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {paymentMethods
-                .find(m => m.type === selectedPaymentMethod)
-                ?.methods.map((subOption, index) => (
-                  <Button
-                    key={index}
-                    variant={selectedSubOption === subOption ? "default" : "outline"}
-                    className="w-full justify-start h-auto p-3 text-left"
-                    onClick={() => setSelectedSubOption(subOption)}
-                  >
-                    <div className="w-full">
-                      <div className="font-medium text-sm leading-tight">{subOption}</div>
-                      {selectedSubOption === subOption && (
-                        <Badge className="mt-1">Selected</Badge>
-                      )}
-                    </div>
-                  </Button>
-                ))
-              }
-            </div>
+            <Select value={selectedSubOption} onValueChange={setSelectedSubOption}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Select specific payment option" />
+              </SelectTrigger>
+              <SelectContent>
+                {paymentMethods
+                  .find(m => m.type === selectedPaymentMethod)
+                  ?.methods.map((subOption, index) => (
+                    <SelectItem key={index} value={subOption}>
+                      {subOption}
+                    </SelectItem>
+                  ))
+                }
+              </SelectContent>
+            </Select>
           </CardContent>
         </Card>
       )}
@@ -399,10 +443,16 @@ export const PaymentsSection = () => {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="USD">USD - US Dollar</SelectItem>
-                      <SelectItem value="EUR">EUR - Euro</SelectItem>
-                      <SelectItem value="KES">KES - Kenyan Shilling</SelectItem>
-                      <SelectItem value="BTC">BTC - Bitcoin</SelectItem>
+                      {walletCurrencies.map((wallet) => (
+                        <SelectItem key={wallet.currency_code} value={wallet.currency_code}>
+                          <div className="flex items-center justify-between w-full">
+                            <span>{wallet.currency_code}</span>
+                            <Badge variant="secondary" className="ml-2">
+                              Balance: {wallet.balance.toFixed(4)}
+                            </Badge>
+                          </div>
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -427,7 +477,26 @@ export const PaymentsSection = () => {
                 />
               </div>
 
-              <Button type="submit" className="w-full" disabled={processing}>
+              {/* Selected Payment Summary */}
+              <div className="bg-muted p-4 rounded-lg">
+                <h4 className="font-medium mb-2">Payment Summary</h4>
+                <div className="space-y-1 text-sm">
+                  <div className="flex justify-between">
+                    <span>Payment Method:</span>
+                    <span className="font-medium">{paymentMethods.find(m => m.type === selectedPaymentMethod)?.name}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Option:</span>
+                    <span className="font-medium text-xs">{selectedSubOption}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Available Balance:</span>
+                    <span className="font-medium">{getCurrencyBalance(paymentData.currency).toFixed(4)} {paymentData.currency}</span>
+                  </div>
+                </div>
+              </div>
+
+              <Button type="submit" className="w-full" disabled={processing || loading}>
                 {processing ? (
                   <>
                     <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
@@ -464,26 +533,51 @@ export const PaymentsSection = () => {
             </CardTitle>
             <CardDescription>Choose where to send money from</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-3">
-            {outputMethods.map((method) => (
-              <Button
-                key={method.name}
-                variant={selectedSendSource === method.type ? "default" : "outline"}
-                className="w-full justify-start h-auto py-3"
-                onClick={() => {
-                  setSelectedSendSource(method.type);
-                  setSelectedSendSubSource(""); // Reset sub-option when source changes
-                }}
-              >
-                <method.icon className="w-4 h-4 mr-3" />
-                <div className="text-left">
-                  <div className="font-medium text-sm">{method.name}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {method.methods.slice(0, 2).join(', ')}
-                  </div>
-                </div>
-              </Button>
-            ))}
+          <CardContent>
+            <Select value={selectedSendSource} onValueChange={(value) => {
+              setSelectedSendSource(value);
+              setSelectedSendSubSource("");
+            }}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Select source" />
+              </SelectTrigger>
+              <SelectContent>
+                {outputMethods.map((method) => (
+                  <SelectItem key={method.type} value={method.type}>
+                    <div className="flex items-center gap-3">
+                      <method.icon className="w-4 h-4" />
+                      <div>
+                        <div className="font-medium">{method.name}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {method.methods.length} options available
+                        </div>
+                      </div>
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {selectedSendSource && (
+              <div className="mt-4">
+                <Label>Specific Source</Label>
+                <Select value={selectedSendSubSource} onValueChange={setSelectedSendSubSource}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select specific source" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {outputMethods
+                      .find(m => m.type === selectedSendSource)
+                      ?.methods.map((method, index) => (
+                        <SelectItem key={index} value={method}>
+                          {method}
+                        </SelectItem>
+                      ))
+                    }
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -496,185 +590,80 @@ export const PaymentsSection = () => {
             </CardTitle>
             <CardDescription>Choose where to send money to</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-3">
-            {outputMethods.map((method) => (
-              <Button
-                key={method.name}
-                variant={selectedSendDestination === method.type ? "default" : "outline"}
-                className="w-full justify-start h-auto py-3"
-                onClick={() => {
-                  setSelectedSendDestination(method.type);
-                  setSelectedSendSubDestination(""); // Reset sub-option when destination changes
-                }}
-              >
-                <method.icon className="w-4 h-4 mr-3" />
-                <div className="text-left">
-                  <div className="font-medium text-sm">{method.name}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {method.methods.slice(0, 2).join(', ')}
-                  </div>
-                </div>
-              </Button>
-            ))}
+          <CardContent>
+            <Select value={selectedSendDestination} onValueChange={(value) => {
+              setSelectedSendDestination(value);
+              setSelectedSendSubDestination("");
+            }}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Select destination" />
+              </SelectTrigger>
+              <SelectContent>
+                {outputMethods.map((method) => (
+                  <SelectItem key={method.type} value={method.type}>
+                    <div className="flex items-center gap-3">
+                      <method.icon className="w-4 h-4" />
+                      <div>
+                        <div className="font-medium">{method.name}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {method.methods.length} options available
+                        </div>
+                      </div>
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {selectedSendDestination && (
+              <div className="mt-4">
+                <Label>Specific Destination</Label>
+                <Select value={selectedSendSubDestination} onValueChange={setSelectedSendSubDestination}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select specific destination" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {outputMethods
+                      .find(m => m.type === selectedSendDestination)
+                      ?.methods.map((method, index) => (
+                        <SelectItem key={index} value={method}>
+                          {method}
+                        </SelectItem>
+                      ))
+                    }
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
-
-      {/* Source Sub-options */}
-      {selectedSendSource && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <ArrowRight className="w-5 h-5" />
-              Select Specific Source
-            </CardTitle>
-            <CardDescription>
-              Choose your preferred {outputMethods.find(m => m.type === selectedSendSource)?.name} source
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {outputMethods
-                .find(m => m.type === selectedSendSource)
-                ?.methods.map((subOption, index) => (
-                  <Button
-                    key={index}
-                    variant={selectedSendSubSource === subOption ? "default" : "outline"}
-                    className="w-full justify-start h-auto p-3 text-left"
-                    onClick={() => setSelectedSendSubSource(subOption)}
-                  >
-                    <div className="w-full">
-                      <div className="font-medium text-sm leading-tight">{subOption}</div>
-                      {selectedSendSubSource === subOption && (
-                        <Badge className="mt-1">Selected</Badge>
-                      )}
-                    </div>
-                  </Button>
-                ))
-              }
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Destination Sub-options */}
-      {selectedSendDestination && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <ArrowRight className="w-5 h-5" />
-              Select Specific Destination
-            </CardTitle>
-            <CardDescription>
-              Choose your preferred {outputMethods.find(m => m.type === selectedSendDestination)?.name} destination
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {outputMethods
-                .find(m => m.type === selectedSendDestination)
-                ?.methods.map((subOption, index) => (
-                  <Button
-                    key={index}
-                    variant={selectedSendSubDestination === subOption ? "default" : "outline"}
-                    className="w-full justify-start h-auto p-3 text-left"
-                    onClick={() => setSelectedSendSubDestination(subOption)}
-                  >
-                    <div className="w-full">
-                      <div className="font-medium text-sm leading-tight">{subOption}</div>
-                      {selectedSendSubDestination === subOption && (
-                        <Badge className="mt-1">Selected</Badge>
-                      )}
-                    </div>
-                  </Button>
-                ))
-              }
-            </div>
-          </CardContent>
-        </Card>
-      )}
 
       {/* Send Form */}
       {selectedSendSource && selectedSendDestination && selectedSendSubSource && selectedSendSubDestination && (
         <Card>
           <CardHeader>
-            <CardTitle>Send Details</CardTitle>
-            <CardDescription>Enter transfer information</CardDescription>
+            <CardTitle>Send Money Details</CardTitle>
+            <CardDescription>Complete your money transfer</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-4">
-                <div>
-                  <Label>Amount</Label>
-                  <Input placeholder="Enter amount to send" />
-                </div>
-                
-                <div>
-                  <Label>Currency</Label>
-                  <Select>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select currency" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="USD">USD - US Dollar</SelectItem>
-                      <SelectItem value="EUR">EUR - Euro</SelectItem>
-                      <SelectItem value="KES">KES - Kenyan Shilling</SelectItem>
-                      <SelectItem value="BTC">BTC - Bitcoin</SelectItem>
-                    </SelectContent>
-                  </Select>
+            <div className="space-y-4">
+              <div className="bg-muted p-4 rounded-lg">
+                <h4 className="font-medium mb-2">Transfer Route</h4>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="font-medium">{selectedSendSubSource}</span>
+                  <ArrowRight className="w-4 h-4" />
+                  <span className="font-medium">{selectedSendSubDestination}</span>
                 </div>
               </div>
-
-              <div className="space-y-4">
-                <div>
-                  <Label>Recipient Details</Label>
-                  <Input placeholder="Phone, email, or account number" />
-                </div>
-                
-                <div>
-                  <Label>Reference/Note</Label>
-                  <Input placeholder="Payment reference or note" />
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-6 flex justify-center">
-              <Button size="lg">
+              <Button className="w-full">
                 <Send className="w-4 h-4 mr-2" />
-                Send Money
+                Continue to Send Money
               </Button>
             </div>
           </CardContent>
         </Card>
       )}
-
-      {/* Transaction Flow Visualization */}
-      <Card>
-        <CardContent className="p-6">
-          <div className="flex items-center justify-between">
-            <div className="text-center">
-              <div className={`w-10 h-10 rounded-full flex items-center justify-center mb-2 ${selectedSendSource ? 'bg-primary text-white' : 'bg-primary/10'}`}>
-                <Wallet className="w-5 h-5" />
-              </div>
-              <p className="text-sm font-medium">Choose Source</p>
-            </div>
-            <ArrowRight className="text-muted-foreground" />
-            <div className="text-center">
-              <div className={`w-10 h-10 rounded-full flex items-center justify-center mb-2 ${selectedSendDestination ? 'bg-primary text-white' : 'bg-primary/10'}`}>
-                <Send className="w-5 h-5" />
-              </div>
-              <p className="text-sm font-medium">Choose Destination</p>
-            </div>
-            <ArrowRight className="text-muted-foreground" />
-            <div className="text-center">
-              <div className={`w-10 h-10 rounded-full flex items-center justify-center mb-2 ${selectedSendSubSource && selectedSendSubDestination ? 'bg-primary text-white' : 'bg-primary/10'}`}>
-                <CheckCircle className="w-5 h-5" />
-              </div>
-              <p className="text-sm font-medium">Complete Transfer</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
     </div>
   );
 
@@ -682,229 +671,141 @@ export const PaymentsSection = () => {
     <div className="space-y-6">
       <div className="text-center">
         <h2 className="text-2xl font-bold">Withdraw Funds</h2>
-        <p className="text-muted-foreground">Transfer money to your bank or mobile wallet</p>
+        <p className="text-muted-foreground">Move money from your Universal Pay wallet to external accounts</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Withdrawal Source Selection */}
+        {/* Source Selection */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Wallet className="w-5 h-5" />
-              Withdrawal Source
+              Withdraw From
             </CardTitle>
-            <CardDescription>Choose where to withdraw funds from</CardDescription>
+            <CardDescription>Choose source wallet</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-3">
-            {outputMethods.map((method) => (
-              <Button
-                key={method.name}
-                variant={selectedWithdrawSource === method.type ? "default" : "outline"}
-                className="w-full justify-start h-auto py-3"
-                onClick={() => {
-                  setSelectedWithdrawSource(method.type);
-                  setSelectedWithdrawSubSource(""); // Reset sub-option when source changes
-                }}
-              >
-                <method.icon className="w-4 h-4 mr-3" />
-                <div className="text-left">
-                  <div className="font-medium text-sm">{method.name}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {method.methods.slice(0, 2).join(', ')}
-                  </div>
-                </div>
-              </Button>
-            ))}
+          <CardContent>
+            <Select value={selectedWithdrawSource} onValueChange={setSelectedWithdrawSource}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Select wallet currency" />
+              </SelectTrigger>
+              <SelectContent>
+                {walletCurrencies.map((wallet) => (
+                  <SelectItem key={wallet.currency_code} value={wallet.currency_code}>
+                    <div className="flex items-center justify-between w-full">
+                      <span>{wallet.currency_code} Wallet</span>
+                      <Badge variant="secondary" className="ml-2">
+                        {wallet.balance.toFixed(4)}
+                      </Badge>
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </CardContent>
         </Card>
 
-        {/* Withdrawal Destination Selection */}
+        {/* Destination Selection */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <ArrowDownToLine className="w-5 h-5" />
-              Withdrawal Destination
+              Withdraw To
             </CardTitle>
-            <CardDescription>Choose where to transfer funds to</CardDescription>
+            <CardDescription>Choose withdrawal destination</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-3">
-            {outputMethods.map((method) => (
-              <Button
-                key={method.name}
-                variant={selectedWithdrawDestination === method.type ? "default" : "outline"}
-                className="w-full justify-start h-auto py-3"
-                onClick={() => {
-                  setSelectedWithdrawDestination(method.type);
-                  setSelectedWithdrawSubDestination(""); // Reset sub-option when destination changes
-                }}
-              >
-                <method.icon className="w-4 h-4 mr-3" />
-                <div className="text-left">
-                  <div className="font-medium text-sm">{method.name}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {method.methods.slice(0, 2).join(', ')}
-                  </div>
-                </div>
-              </Button>
-            ))}
+          <CardContent>
+            <Select value={selectedWithdrawDestination} onValueChange={(value) => {
+              setSelectedWithdrawDestination(value);
+              setSelectedWithdrawSubDestination("");
+            }}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Select destination type" />
+              </SelectTrigger>
+              <SelectContent>
+                {outputMethods.map((method) => (
+                  <SelectItem key={method.type} value={method.type}>
+                    <div className="flex items-center gap-3">
+                      <method.icon className="w-4 h-4" />
+                      <div>
+                        <div className="font-medium">{method.name}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {method.methods.length} options available
+                        </div>
+                      </div>
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {selectedWithdrawDestination && (
+              <div className="mt-4">
+                <Label>Specific Destination</Label>
+                <Select value={selectedWithdrawSubDestination} onValueChange={setSelectedWithdrawSubDestination}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select specific option" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {outputMethods
+                      .find(m => m.type === selectedWithdrawDestination)
+                      ?.methods.map((method, index) => (
+                        <SelectItem key={index} value={method}>
+                          {method}
+                        </SelectItem>
+                      ))
+                    }
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
 
-      {/* Source Sub-options */}
-      {selectedWithdrawSource && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <ArrowRight className="w-5 h-5" />
-              Select Specific Source
-            </CardTitle>
-            <CardDescription>
-              Choose your preferred {outputMethods.find(m => m.type === selectedWithdrawSource)?.name} source
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {outputMethods
-                .find(m => m.type === selectedWithdrawSource)
-                ?.methods.map((subOption, index) => (
-                  <Button
-                    key={index}
-                    variant={selectedWithdrawSubSource === subOption ? "default" : "outline"}
-                    className="w-full justify-start h-auto p-3 text-left"
-                    onClick={() => setSelectedWithdrawSubSource(subOption)}
-                  >
-                    <div className="w-full">
-                      <div className="font-medium text-sm leading-tight">{subOption}</div>
-                      {selectedWithdrawSubSource === subOption && (
-                        <Badge className="mt-1">Selected</Badge>
-                      )}
-                    </div>
-                  </Button>
-                ))
-              }
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Destination Sub-options */}
-      {selectedWithdrawDestination && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <ArrowRight className="w-5 h-5" />
-              Select Specific Destination
-            </CardTitle>
-            <CardDescription>
-              Choose your preferred {outputMethods.find(m => m.type === selectedWithdrawDestination)?.name} destination
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {outputMethods
-                .find(m => m.type === selectedWithdrawDestination)
-                ?.methods.map((subOption, index) => (
-                  <Button
-                    key={index}
-                    variant={selectedWithdrawSubDestination === subOption ? "default" : "outline"}
-                    className="w-full justify-start h-auto p-3 text-left"
-                    onClick={() => setSelectedWithdrawSubDestination(subOption)}
-                  >
-                    <div className="w-full">
-                      <div className="font-medium text-sm leading-tight">{subOption}</div>
-                      {selectedWithdrawSubDestination === subOption && (
-                        <Badge className="mt-1">Selected</Badge>
-                      )}
-                    </div>
-                  </Button>
-                ))
-              }
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
       {/* Withdraw Form */}
-      {selectedWithdrawSource && selectedWithdrawDestination && selectedWithdrawSubSource && selectedWithdrawSubDestination && (
+      {selectedWithdrawSource && selectedWithdrawDestination && selectedWithdrawSubDestination && (
         <Card>
           <CardHeader>
             <CardTitle>Withdrawal Details</CardTitle>
-            <CardDescription>Enter withdrawal information</CardDescription>
+            <CardDescription>Complete your withdrawal</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-4">
-                <div>
-                  <Label>Amount</Label>
-                  <Input placeholder="Enter withdrawal amount" />
-                </div>
-                
-                <div>
-                  <Label>Currency</Label>
-                  <Select>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select currency" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="USD">USD - US Dollar</SelectItem>
-                      <SelectItem value="EUR">EUR - Euro</SelectItem>
-                      <SelectItem value="KES">KES - Kenyan Shilling</SelectItem>
-                      <SelectItem value="BTC">BTC - Bitcoin</SelectItem>
-                    </SelectContent>
-                  </Select>
+            <div className="space-y-4">
+              <div className="bg-muted p-4 rounded-lg">
+                <h4 className="font-medium mb-2">Withdrawal Route</h4>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span>From:</span>
+                    <span className="font-medium">{selectedWithdrawSource} Wallet</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>To:</span>
+                    <span className="font-medium">{selectedWithdrawSubDestination}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Available:</span>
+                    <span className="font-medium">{getCurrencyBalance(selectedWithdrawSource).toFixed(4)} {selectedWithdrawSource}</span>
+                  </div>
                 </div>
               </div>
-
-              <div className="space-y-4">
-                <div>
-                  <Label>Destination Account</Label>
-                  <Input placeholder="Account number or mobile number" />
-                </div>
-                
-                <div>
-                  <Label>Reference/Note</Label>
-                  <Input placeholder="Withdrawal reference or note" />
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-6 flex justify-center">
-              <Button size="lg">
+              <Button className="w-full">
                 <ArrowDownToLine className="w-4 h-4 mr-2" />
-                Request Withdrawal
+                Continue to Withdraw
               </Button>
             </div>
           </CardContent>
         </Card>
       )}
-
-      {/* Available Balance */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Available Balances</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {wallets.map((wallet) => (
-              <div key={wallet.id} className="p-4 border rounded-lg text-center">
-                <div className="font-semibold text-lg">{wallet.currency}</div>
-                <div className="text-2xl font-bold">${wallet.balance.toFixed(2)}</div>
-                <Badge variant="outline" className="mt-2">{wallet.currency}</Badge>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
     </div>
   );
 
   return (
-    <div className="space-y-6 animate-fade-in">
-      <div className="text-center mb-8">
-        <h1 className="text-3xl font-bold mb-2">Payments Hub</h1>
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-3xl font-bold">Payment Hub</h1>
         <p className="text-muted-foreground">
-          Comprehensive payment solutions for all your financial needs
+          Send, receive, and manage payments across multiple channels and currencies
         </p>
       </div>
 
@@ -912,62 +813,30 @@ export const PaymentsSection = () => {
         <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="pay" className="flex items-center gap-2">
             <CreditCard className="w-4 h-4" />
-            Pay
+            <span className="hidden sm:inline">Pay</span>
           </TabsTrigger>
           <TabsTrigger value="send" className="flex items-center gap-2">
             <Send className="w-4 h-4" />
-            Send
+            <span className="hidden sm:inline">Send</span>
           </TabsTrigger>
           <TabsTrigger value="withdraw" className="flex items-center gap-2">
             <ArrowDownToLine className="w-4 h-4" />
-            Withdraw
+            <span className="hidden sm:inline">Withdraw</span>
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="pay">
+        <TabsContent value="pay" className="space-y-6">
           <PayTab />
         </TabsContent>
-
-        <TabsContent value="send">
+        
+        <TabsContent value="send" className="space-y-6">
           <SendTab />
         </TabsContent>
-
-        <TabsContent value="withdraw">
+        
+        <TabsContent value="withdraw" className="space-y-6">
           <WithdrawTab />
         </TabsContent>
       </Tabs>
-
-      {/* Live Status */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <CheckCircle className="w-5 h-5 text-green-600" />
-            Payment System Status
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="p-4 bg-green-50 border border-green-200 rounded-lg text-center">
-              <div className="text-sm font-medium text-green-800">Active Tab</div>
-              <div className="text-lg font-bold text-green-900 capitalize">{activeTab}</div>
-            </div>
-            <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg text-center">
-              <div className="text-sm font-medium text-blue-800">Payment Method</div>
-              <div className="text-lg font-bold text-blue-900">{selectedPaymentMethod || "Not Selected"}</div>
-            </div>
-            <div className="p-4 bg-purple-50 border border-purple-200 rounded-lg text-center">
-              <div className="text-sm font-medium text-purple-800">Payment Type</div>
-              <div className="text-lg font-bold text-purple-900 capitalize">{selectedPaymentType.replace(/-/g, ' ')}</div>
-            </div>
-            <div className="p-4 bg-orange-50 border border-orange-200 rounded-lg text-center">
-              <div className="text-sm font-medium text-orange-800">Status</div>
-              <div className="text-lg font-bold text-orange-900">
-                {processing ? "Processing" : "Ready"}
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
     </div>
   );
 };
