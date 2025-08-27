@@ -217,6 +217,99 @@ export type Database = {
           },
         ]
       }
+      enhanced_wallet_transactions: {
+        Row: {
+          created_at: string
+          description: string | null
+          exchange_rate: number | null
+          external_id: string | null
+          fee_amount: number
+          fee_currency: string | null
+          from_amount: number | null
+          from_currency: string | null
+          id: string
+          metadata: Json | null
+          processed_at: string | null
+          reference_id: string | null
+          status: string
+          to_amount: number | null
+          to_currency: string | null
+          transaction_type: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          exchange_rate?: number | null
+          external_id?: string | null
+          fee_amount?: number
+          fee_currency?: string | null
+          from_amount?: number | null
+          from_currency?: string | null
+          id?: string
+          metadata?: Json | null
+          processed_at?: string | null
+          reference_id?: string | null
+          status?: string
+          to_amount?: number | null
+          to_currency?: string | null
+          transaction_type: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          exchange_rate?: number | null
+          external_id?: string | null
+          fee_amount?: number
+          fee_currency?: string | null
+          from_amount?: number | null
+          from_currency?: string | null
+          id?: string
+          metadata?: Json | null
+          processed_at?: string | null
+          reference_id?: string | null
+          status?: string
+          to_amount?: number | null
+          to_currency?: string | null
+          transaction_type?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      exchange_rates: {
+        Row: {
+          created_at: string
+          from_currency: string
+          id: string
+          rate: number
+          source: string
+          to_currency: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          from_currency: string
+          id?: string
+          rate: number
+          source?: string
+          to_currency: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          from_currency?: string
+          id?: string
+          rate?: number
+          source?: string
+          to_currency?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       sub_account_balances: {
         Row: {
           balance: number
@@ -416,6 +509,42 @@ export type Database = {
         }
         Relationships: []
       }
+      wallet_currencies: {
+        Row: {
+          balance: number
+          created_at: string
+          currency_code: string
+          id: string
+          is_active: boolean
+          locked_balance: number
+          updated_at: string
+          user_id: string
+          wallet_address: string | null
+        }
+        Insert: {
+          balance?: number
+          created_at?: string
+          currency_code: string
+          id?: string
+          is_active?: boolean
+          locked_balance?: number
+          updated_at?: string
+          user_id: string
+          wallet_address?: string | null
+        }
+        Update: {
+          balance?: number
+          created_at?: string
+          currency_code?: string
+          id?: string
+          is_active?: boolean
+          locked_balance?: number
+          updated_at?: string
+          user_id?: string
+          wallet_address?: string | null
+        }
+        Relationships: []
+      }
       wallet_sub_accounts: {
         Row: {
           allowed_currencies: string[] | null
@@ -499,6 +628,25 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      add_funds_to_wallet: {
+        Args: {
+          p_amount: number
+          p_currency: string
+          p_reference?: string
+          p_source?: string
+          p_user_id: string
+        }
+        Returns: boolean
+      }
+      convert_currency: {
+        Args: {
+          p_amount: number
+          p_from_currency: string
+          p_to_currency: string
+          p_user_id: string
+        }
+        Returns: boolean
+      }
       create_sub_account: {
         Args: {
           p_initial_currencies?: string[]
@@ -509,6 +657,16 @@ export type Database = {
           p_sub_user_email?: string
         }
         Returns: string
+      }
+      send_payment: {
+        Args: {
+          p_amount: number
+          p_currency: string
+          p_description?: string
+          p_recipient_id: string
+          p_sender_id: string
+        }
+        Returns: boolean
       }
       transfer_to_sub_account: {
         Args: {
