@@ -3,6 +3,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { AuthProvider } from "@/hooks/useAuth";
 import { SecureAuthProvider } from "@/hooks/useSecureAuth";
 import { SegmentProvider } from "@/hooks/useCustomerSegment";
 import { ThemeProvider } from "@/hooks/useTheme";
@@ -24,8 +25,9 @@ const App = () => (
   <QueryClientProvider client={queryClient}>
     <ThemeProvider defaultTheme="dark" storageKey="universal-pay-theme">
       <LanguageProvider>
-        <SecureAuthProvider>
-          <SegmentProvider>
+        <AuthProvider>
+          <SecureAuthProvider>
+            <SegmentProvider>
             <TooltipProvider>
             <Toaster />
             <Sonner />
@@ -45,8 +47,9 @@ const App = () => (
               </Routes>
             </BrowserRouter>
             </TooltipProvider>
-          </SegmentProvider>
-        </SecureAuthProvider>
+            </SegmentProvider>
+          </SecureAuthProvider>
+        </AuthProvider>
       </LanguageProvider>
     </ThemeProvider>
   </QueryClientProvider>
