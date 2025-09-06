@@ -8,7 +8,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
-import { useSecureAuth } from '@/hooks/useSecureAuth';
+import { useAuth } from '@/hooks/useAuth';
+import { SocialAuthButtons } from './SocialAuthButtons';
+import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
 const loginSchema = z.object({
@@ -25,42 +27,38 @@ interface SecureLoginFormProps {
 
 export const SecureLoginForm = ({ onSuccess, onSwitchToSignup }: SecureLoginFormProps) => {
   const [showPassword, setShowPassword] = useState(false);
-  const [lastEmail, setLastEmail] = useState(localStorage.getItem('last_login_email') || '');
-  const { login, loginWithBiometric, user, biometricSupported, loading } = useSecureAuth();
+  const [loading, setLoading] = useState(false);
+  const { user } = useAuth();
 
   const form = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
     defaultValues: {
-      email: lastEmail,
+      email: '',
       password: '',
     },
   });
 
   const onSubmit = async (data: LoginFormData) => {
-    const success = await login(data.email, data.password);
-    if (success) {
-      localStorage.setItem('last_login_email', data.email);
-      setLastEmail(data.email);
+    setLoading(true);
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email: data.email,
+        password: data.password,
+      });
+
+      if (error) {
+        toast.error(error.message);
+        return;
+      }
+
+      toast.success('Welcome back!');
       onSuccess?.();
+    } catch (error: any) {
+      toast.error('Login failed: ' + (error.message || 'Unknown error'));
+    } finally {
+      setLoading(false);
     }
   };
-
-  const handleBiometricLogin = async () => {
-    if (!lastEmail) {
-      toast.error('No previous login found');
-      return;
-    }
-
-    // In a real app, you'd get the user ID from the email
-    // For now, using email as identifier
-    const success = await loginWithBiometric(lastEmail);
-    if (success) {
-      onSuccess?.();
-    }
-  };
-
-  const showBiometricOption = biometricSupported && lastEmail && 
-    localStorage.getItem('biometric_enabled') === 'true';
 
   return (
     <Card className="w-full max-w-md mx-auto">
@@ -74,30 +72,7 @@ export const SecureLoginForm = ({ onSuccess, onSwitchToSignup }: SecureLoginForm
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {showBiometricOption && (
-          <div className="space-y-2">
-            <Button
-              type="button"
-              variant="outline"
-              className="w-full"
-              onClick={handleBiometricLogin}
-              disabled={loading}
-            >
-              <Fingerprint className="h-4 w-4 mr-2" />
-              Login with Biometrics
-            </Button>
-            <div className="relative">
-              <div className="absolute inset-0 flex items-center">
-                <span className="w-full border-t" />
-              </div>
-              <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-background px-2 text-muted-foreground">
-                  Or continue with password
-                </span>
-              </div>
-            </div>
-          </div>
-        )}
+        <SocialAuthButtons onSuccess={onSuccess} mode="login" />
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">

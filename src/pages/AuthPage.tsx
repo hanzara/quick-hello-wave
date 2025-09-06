@@ -1,16 +1,16 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useSecureAuth } from '@/hooks/useSecureAuth';
+import { useAuth } from '@/hooks/useAuth';
 import { SecureLoginForm } from '@/components/auth/SecureLoginForm';
 import { SecureSignupForm } from '@/components/auth/SecureSignupForm';
-import { BiometricSetup } from '@/components/auth/BiometricSetup';
+import { ProfileVerification } from '@/components/ProfileVerification';
 
-type AuthStep = 'login' | 'signup' | 'biometric-setup';
+type AuthStep = 'login' | 'signup' | 'verification';
 
 export const AuthPage = () => {
   const [currentStep, setCurrentStep] = useState<AuthStep>('login');
-  const [showBiometricSetup, setShowBiometricSetup] = useState(false);
-  const { user, loading } = useSecureAuth();
+  const [showVerification, setShowVerification] = useState(false);
+  const { user, loading } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -21,23 +21,19 @@ export const AuthPage = () => {
   }, [user, loading, navigate]);
 
   const handleLoginSuccess = () => {
-    // Check if user should set up biometrics
-    if (user && !user.biometricEnabled) {
-      setShowBiometricSetup(true);
+    // Show verification page for new or unverified users
+    if (user && !user.email_confirmed_at) {
+      setShowVerification(true);
     } else {
       navigate('/dashboard');
     }
   };
 
   const handleSignupSuccess = () => {
-    setShowBiometricSetup(true);
+    setShowVerification(true);
   };
 
-  const handleBiometricComplete = () => {
-    navigate('/dashboard');
-  };
-
-  const handleBiometricSkip = () => {
+  const handleVerificationComplete = () => {
     navigate('/dashboard');
   };
 
@@ -55,11 +51,18 @@ export const AuthPage = () => {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800 p-4">
       <div className="w-full max-w-md">
-        {showBiometricSetup ? (
-          <BiometricSetup 
-            onComplete={handleBiometricComplete}
-            onSkip={handleBiometricSkip}
-          />
+        {showVerification ? (
+          <div className="space-y-4">
+            <ProfileVerification />
+            <div className="text-center">
+              <button
+                onClick={handleVerificationComplete}
+                className="text-sm text-primary hover:underline"
+              >
+                Continue to Dashboard
+              </button>
+            </div>
+          </div>
         ) : currentStep === 'login' ? (
           <SecureLoginForm
             onSuccess={handleLoginSuccess}

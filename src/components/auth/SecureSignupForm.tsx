@@ -8,7 +8,10 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Checkbox } from '@/components/ui/checkbox';
-import { useSecureAuth } from '@/hooks/useSecureAuth';
+import { useAuth } from '@/hooks/useAuth';
+import { SocialAuthButtons } from './SocialAuthButtons';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
 
 const signupSchema = z.object({
   email: z.string().email('Invalid email address'),
@@ -34,7 +37,8 @@ interface SecureSignupFormProps {
 export const SecureSignupForm = ({ onSuccess, onSwitchToLogin }: SecureSignupFormProps) => {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const { signup, loading } = useSecureAuth();
+  const [loading, setLoading] = useState(false);
+  const { user } = useAuth();
 
   const form = useForm<SignupFormData>({
     resolver: zodResolver(signupSchema),
@@ -48,9 +52,33 @@ export const SecureSignupForm = ({ onSuccess, onSwitchToLogin }: SecureSignupFor
   });
 
   const onSubmit = async (data: SignupFormData) => {
-    const success = await signup(data.email, data.password, data.phone);
-    if (success) {
+    setLoading(true);
+    try {
+      const redirectUrl = `${window.location.origin}/auth`;
+      
+      const { error } = await supabase.auth.signUp({
+        email: data.email,
+        password: data.password,
+        options: {
+          emailRedirectTo: redirectUrl,
+          data: {
+            full_name: data.email.split('@')[0], // Default to email username
+            phone: data.phone,
+          },
+        },
+      });
+
+      if (error) {
+        toast.error(error.message);
+        return;
+      }
+
+      toast.success('Account created! Please check your email to verify your account.');
       onSuccess?.();
+    } catch (error: any) {
+      toast.error('Signup failed: ' + (error.message || 'Unknown error'));
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -91,6 +119,8 @@ export const SecureSignupForm = ({ onSuccess, onSwitchToLogin }: SecureSignupFor
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
+        <SocialAuthButtons onSuccess={onSuccess} mode="signup" />
+        
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
             <FormField
