@@ -18,6 +18,7 @@ import SolutionsPage from "./pages/SolutionsPage";
 import DevelopersPage from "./pages/DevelopersPage";
 import CompanyPage from "./pages/CompanyPage";
 import OnboardingPage from "./pages/OnboardingPage";
+import { TermsPage } from "./pages/TermsPage";
 
 const queryClient = new QueryClient();
 
@@ -42,6 +43,7 @@ const App = () => (
                 <Route path="/dashboard" element={<Dashboard />} />
                 <Route path="/auth" element={<AuthPage />} />
                 <Route path="/onboarding" element={<OnboardingPage />} />
+                <Route path="/terms" element={<TermsPage />} />
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                 <Route path="*" element={<NotFound />} />
               </Routes>

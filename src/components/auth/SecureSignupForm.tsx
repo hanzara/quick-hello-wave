@@ -272,11 +272,21 @@ export const SecureSignupForm = ({ onSuccess, onSwitchToLogin }: SecureSignupFor
                   <div className="space-y-1 leading-none">
                     <FormLabel className="text-sm">
                       I accept the{' '}
-                      <Button variant="link" className="p-0 h-auto text-sm">
+                      <Button 
+                        variant="link" 
+                        className="p-0 h-auto text-sm"
+                        onClick={() => window.open('/terms', '_blank')}
+                        type="button"
+                      >
                         Terms and Conditions
                       </Button>{' '}
                       and{' '}
-                      <Button variant="link" className="p-0 h-auto text-sm">
+                      <Button 
+                        variant="link" 
+                        className="p-0 h-auto text-sm"
+                        onClick={() => window.open('/terms', '_blank')}
+                        type="button"
+                      >
                         Privacy Policy
                       </Button>
                     </FormLabel>

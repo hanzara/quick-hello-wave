@@ -82,11 +82,6 @@ export const SocialAuthButtons = ({ onSuccess, mode = 'login' }: SocialAuthButto
           Continue with X (Twitter)
         </Button>
       </div>
-
-      <p className="text-xs text-center text-muted-foreground">
-        Note: TikTok authentication is not directly supported. For TikTok integration, 
-        we recommend using TikTok's Business API after {mode === 'login' ? 'logging in' : 'signing up'}.
-      </p>
     </div>
   );
 };
