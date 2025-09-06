@@ -30,7 +30,7 @@ interface EnhancedTransaction {
   description?: string;
   reference_id?: string;
   external_id?: string;
-  metadata: Record<string, any>;
+  metadata: any; // Changed from Record<string, any> to any to match Supabase Json type
   processed_at?: string;
   created_at: string;
   updated_at: string;

@@ -7,6 +7,7 @@ export interface Card {
   user_id: string;
   card_name: string;
   card_type: 'virtual' | 'physical';
+  card_subtype?: string;
   status: string;
   balance: number;
   current_balance: number;
@@ -20,6 +21,15 @@ export interface Card {
   is_apple_pay_enabled: boolean;
   is_google_pay_enabled: boolean;
   is_paypal_enabled: boolean;
+  card_number?: string;
+  card_holder_name?: string;
+  cvv?: string;
+  expiry_date?: string;
+  daily_limit?: number;
+  weekly_limit?: number;
+  monthly_limit?: number;
+  auto_expiry_date?: string;
+  pin_hash?: string;
 }
 
 interface CardTransaction {
@@ -39,6 +49,7 @@ interface CardTransaction {
 interface CardSettings {
   notifications?: any[];
   rewards?: any[];
+  international_enabled?: boolean;
 }
 
 export const useCards = () => {
