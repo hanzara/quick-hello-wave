@@ -11,7 +11,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { 
   PiggyBank, Target, Calendar, DollarSign, TrendingUp, 
   HandCoins, Users, Clock, AlertCircle, Plus, Minus,
-  ArrowUpRight, ArrowDownRight, Wallet, Send, Loader2
+  ArrowUpRight, ArrowDownRight, Wallet, Send, Loader2, ArrowRightLeft
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
@@ -19,6 +19,8 @@ import Navigation from '@/components/Navigation';
 import CurrencyDisplay from '@/components/CurrencyDisplay';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar } from 'recharts';
 import { usePersonalSavings } from '@/hooks/usePersonalSavings';
+import TransferToSavingModal from '@/components/savings/TransferToSavingModal';
+import SavingsAnalytics from '@/components/savings/SavingsAnalytics';
 
 const PersonalSavingsPage = () => {
   const navigate = useNavigate();
@@ -26,18 +28,16 @@ const PersonalSavingsPage = () => {
   const { 
     walletData, 
     savingsGoals, 
+    savingTransfers,
     isLoading, 
-    addSavings, 
+    transferToSavingWallet, 
     getSavingsBreakdown, 
     getSavingsData 
   } = usePersonalSavings();
   
-  const [savingAmount, setSavingAmount] = useState('');
-  const [savingFrequency, setSavingFrequency] = useState('daily');
-  const [savingGoal, setSavingGoal] = useState('');
+  const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
   const [lendAmount, setLendAmount] = useState('');
   const [borrowerDetails, setBorrowerDetails] = useState('');
-  const [isSaving, setIsSaving] = useState(false);
 
   // Mock data for lending (keeping this as mock for now)
   const lendingHistory = [
@@ -50,32 +50,8 @@ const PersonalSavingsPage = () => {
   const savingsData = getSavingsData();
   const savingsBreakdown = getSavingsBreakdown();
 
-  const handleSave = async () => {
-    if (!savingAmount || parseFloat(savingAmount) <= 0) {
-      toast({
-        title: "Error",
-        description: "Please enter a valid amount to save",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    try {
-      setIsSaving(true);
-      await addSavings(
-        parseFloat(savingAmount),
-        savingGoal || undefined,
-        savingFrequency as 'daily' | 'weekly' | 'monthly' | 'one_time'
-      );
-      
-      // Clear form on success
-      setSavingAmount('');
-      setSavingGoal('');
-    } catch (error) {
-      // Error is already handled in the hook
-    } finally {
-      setIsSaving(false);
-    }
+  const handleTransfer = async (transferData: any) => {
+    await transferToSavingWallet(transferData);
   };
 
   const handleLend = () => {
@@ -121,7 +97,7 @@ const PersonalSavingsPage = () => {
 
           <Tabs defaultValue="savings" className="w-full">
             <TabsList className="grid w-full grid-cols-3">
-              <TabsTrigger value="savings">My Savings</TabsTrigger>
+              <TabsTrigger value="savings">Savings Wallet</TabsTrigger>
               <TabsTrigger value="lending">Peer Lending</TabsTrigger>
               <TabsTrigger value="analytics">Analytics</TabsTrigger>
             </TabsList>
@@ -134,28 +110,14 @@ const PersonalSavingsPage = () => {
                     <CardContent className="p-6">
                       <div className="flex items-center justify-between">
                         <div>
-                          <p className="text-sm text-muted-foreground">Wallet Balance</p>
-                          <CurrencyDisplay amount={walletData.balance} className="text-3xl font-bold" showToggle={false} />
-                          <p className="text-xs text-green-600 flex items-center mt-1">
-                            <TrendingUp className="h-3 w-3 mr-1" />
-                            Available for savings
+                          <p className="text-sm text-muted-foreground">Main Wallet</p>
+                          <CurrencyDisplay amount={walletData.balance} className="text-2xl font-bold" showToggle={false} />
+                          <p className="text-xs text-blue-600 flex items-center mt-1">
+                            <Wallet className="h-3 w-3 mr-1" />
+                            Available for transfer
                           </p>
                         </div>
-                        <Wallet className="h-8 w-8 text-green-500" />
-                      </div>
-                      <div className="absolute inset-0 bg-gradient-to-r from-green-500/10 to-transparent" />
-                    </CardContent>
-                  </Card>
-
-                  <Card className="relative overflow-hidden">
-                    <CardContent className="p-6">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-sm text-muted-foreground">Total Savings</p>
-                          <CurrencyDisplay amount={walletData.totalSavings} className="text-3xl font-bold text-blue-600" showToggle={false} />
-                          <p className="text-xs text-blue-600">Across all goals</p>
-                        </div>
-                        <Target className="h-8 w-8 text-blue-500" />
+                        <Wallet className="h-8 w-8 text-blue-500" />
                       </div>
                       <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 to-transparent" />
                     </CardContent>
@@ -165,13 +127,26 @@ const PersonalSavingsPage = () => {
                     <CardContent className="p-6">
                       <div className="flex items-center justify-between">
                         <div>
-                          <p className="text-sm text-muted-foreground">Monthly Progress</p>
-                          <CurrencyDisplay amount={savingsData[savingsData.length - 1]?.amount || 0} className="text-3xl font-bold text-purple-600" showToggle={false} />
-                          <p className="text-xs text-purple-600">Goal: KES {walletData.monthlyTarget.toLocaleString()}</p>
+                          <p className="text-sm text-muted-foreground">Saving Wallet</p>
+                          <CurrencyDisplay amount={walletData.savingBalance} className="text-2xl font-bold text-green-600" showToggle={false} />
+                          <p className="text-xs text-green-600">Total saved</p>
                         </div>
-                        <Calendar className="h-8 w-8 text-purple-500" />
+                        <PiggyBank className="h-8 w-8 text-green-500" />
                       </div>
-                      <Progress value={(savingsData[savingsData.length - 1]?.amount || 0) / walletData.monthlyTarget * 100} className="mt-2" />
+                      <div className="absolute inset-0 bg-gradient-to-r from-green-500/10 to-transparent" />
+                    </CardContent>
+                  </Card>
+
+                  <Card className="relative overflow-hidden">
+                    <CardContent className="p-6">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm text-muted-foreground">Active Goals</p>
+                          <p className="text-2xl font-bold text-purple-600">{savingsGoals.filter(g => g.status === 'active').length}</p>
+                          <p className="text-xs text-purple-600">In progress</p>
+                        </div>
+                        <Target className="h-8 w-8 text-purple-500" />
+                      </div>
                       <div className="absolute inset-0 bg-gradient-to-r from-purple-500/10 to-transparent" />
                     </CardContent>
                   </Card>
@@ -181,7 +156,7 @@ const PersonalSavingsPage = () => {
                       <div className="flex items-center justify-between">
                         <div>
                           <p className="text-sm text-muted-foreground">Saving Streak</p>
-                          <p className="text-3xl font-bold text-orange-600">{walletData.currentStreak}</p>
+                          <p className="text-2xl font-bold text-orange-600">{walletData.currentStreak}</p>
                           <p className="text-xs text-orange-600">days in a row</p>
                         </div>
                         <Clock className="h-8 w-8 text-orange-500" />
@@ -191,75 +166,57 @@ const PersonalSavingsPage = () => {
                   </Card>
                 </div>
 
-                {/* Savings Actions */}
-                <div className="grid lg:grid-cols-2 gap-6">
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="flex items-center gap-2">
-                        <Plus className="h-5 w-5" />
-                        Add to Savings
-                      </CardTitle>
-                      <CardDescription>Save money daily or monthly to reach your goals</CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="amount">Amount to Save</Label>
-                        <Input
-                          id="amount"
-                          type="number"
-                          placeholder="Enter amount"
-                          value={savingAmount}
-                          onChange={(e) => setSavingAmount(e.target.value)}
-                        />
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label>Saving Frequency</Label>
-                        <div className="flex gap-2">
-                          <Button
-                            variant={savingFrequency === 'daily' ? 'default' : 'outline'}
-                            size="sm"
-                            onClick={() => setSavingFrequency('daily')}
-                          >
-                            Daily
-                          </Button>
-                          <Button
-                            variant={savingFrequency === 'weekly' ? 'default' : 'outline'}
-                            size="sm"
-                            onClick={() => setSavingFrequency('weekly')}
-                          >
-                            Weekly
-                          </Button>
-                          <Button
-                            variant={savingFrequency === 'monthly' ? 'default' : 'outline'}
-                            size="sm"
-                            onClick={() => setSavingFrequency('monthly')}
-                          >
-                            Monthly
-                          </Button>
+                {/* Transfer Action */}
+                <Card className="lg:col-span-2">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <ArrowRightLeft className="h-5 w-5" />
+                      Transfer to Saving Wallet
+                    </CardTitle>
+                    <CardDescription>Move money from your Main Wallet to your Saving Wallet for specific goals</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex flex-col sm:flex-row gap-4 items-center">
+                      <div className="flex items-center gap-4 flex-1">
+                        <div className="text-center">
+                          <Wallet className="h-8 w-8 text-blue-500 mx-auto mb-2" />
+                          <p className="text-sm font-medium">Main Wallet</p>
+                          <CurrencyDisplay amount={walletData.balance} className="text-lg font-bold" showToggle={false} />
+                        </div>
+                        
+                        <ArrowRightLeft className="h-6 w-6 text-muted-foreground" />
+                        
+                        <div className="text-center">
+                          <PiggyBank className="h-8 w-8 text-green-500 mx-auto mb-2" />
+                          <p className="text-sm font-medium">Saving Wallet</p>
+                          <CurrencyDisplay amount={walletData.savingBalance} className="text-lg font-bold text-green-600" showToggle={false} />
                         </div>
                       </div>
-
-                      <div className="space-y-2">
-                        <Label htmlFor="goal">Savings Goal (Optional)</Label>
-                        <Input
-                          id="goal"
-                          placeholder="e.g., Emergency Fund, Vacation"
-                          value={savingGoal}
-                          onChange={(e) => setSavingGoal(e.target.value)}
-                        />
-                      </div>
-
-                      <Button onClick={handleSave} className="w-full" disabled={isSaving}>
-                        {isSaving ? (
-                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        ) : (
-                          <PiggyBank className="h-4 w-4 mr-2" />
-                        )}
-                        {isSaving ? 'Saving...' : 'Save Money'}
+                      
+                      <Button 
+                        onClick={() => setIsTransferModalOpen(true)} 
+                        size="lg"
+                        className="w-full sm:w-auto"
+                        disabled={walletData.balance <= 0}
+                      >
+                        <ArrowRightLeft className="h-4 w-4 mr-2" />
+                        Transfer Funds
                       </Button>
-                    </CardContent>
-                  </Card>
+                    </div>
+                    
+                    {walletData.balance <= 0 && (
+                      <Alert className="mt-4">
+                        <AlertCircle className="h-4 w-4" />
+                        <AlertDescription>
+                          Your Main Wallet balance is empty. Add funds to start saving.
+                        </AlertDescription>
+                      </Alert>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* Savings Goals */}
+                <div className="grid lg:grid-cols-2 gap-6">
 
                   <Card>
                     <CardHeader>
@@ -429,89 +386,24 @@ const PersonalSavingsPage = () => {
             </TabsContent>
 
             <TabsContent value="analytics">
-              <div className="grid gap-6">
-                {/* Savings Trends */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Savings Performance</CardTitle>
-                    <CardDescription>Track your monthly savings vs targets</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="h-80 w-full">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={savingsData}>
-                          <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis dataKey="month" />
-                          <YAxis />
-                          <Tooltip />
-                          <Bar dataKey="amount" fill="#22c55e" name="Saved" />
-                          <Bar dataKey="target" fill="#94a3b8" name="Target" />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {/* Financial Insights */}
-                <div className="grid md:grid-cols-2 gap-6">
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Savings Insights</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="space-y-4">
-                        <Alert>
-                          <TrendingUp className="h-4 w-4" />
-                          <AlertDescription>
-                            <strong>Great job!</strong> You're saving 15% more than last month. Keep up the momentum!
-                          </AlertDescription>
-                        </Alert>
-                        <Alert>
-                          <Target className="h-4 w-4" />
-                          <AlertDescription>
-                            You're 87% towards your monthly goal. Just KES 2,000 more to reach your target!
-                          </AlertDescription>
-                        </Alert>
-                        <Alert>
-                          <Calendar className="h-4 w-4" />
-                          <AlertDescription>
-                            Your {walletData.currentStreak}-day saving streak is impressive! Daily consistency pays off.
-                          </AlertDescription>
-                        </Alert>
-                      </div>
-                    </CardContent>
-                  </Card>
-
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Lending Performance</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="space-y-4">
-                        <div className="flex justify-between items-center">
-                          <span>Repayment Rate</span>
-                          <span className="font-medium">85%</span>
-                        </div>
-                        <Progress value={85} />
-                        
-                        <div className="flex justify-between items-center">
-                          <span>Average Interest</span>
-                          <span className="font-medium">12.5%</span>
-                        </div>
-                        
-                        <div className="flex justify-between items-center">
-                          <span>Total Borrowers</span>
-                          <span className="font-medium">5</span>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </div>
-              </div>
+              <SavingsAnalytics 
+                walletData={walletData}
+                savingsGoals={savingsGoals}
+                transfers={savingTransfers}
+              />
             </TabsContent>
           </Tabs>
         </div>
       </main>
+
+      <TransferToSavingModal
+        isOpen={isTransferModalOpen}
+        onClose={() => setIsTransferModalOpen(false)}
+        mainWalletBalance={walletData.balance}
+        savingGoals={savingsGoals}
+        onTransfer={handleTransfer}
+        isLoading={isLoading}
+      />
     </div>
   );
 };

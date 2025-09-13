@@ -393,6 +393,7 @@ export type Database = {
           phone: string | null
           phone_verified: boolean | null
           provider: string | null
+          transfer_pin_hash: string | null
           updated_at: string
           user_id: string
         }
@@ -406,6 +407,7 @@ export type Database = {
           phone?: string | null
           phone_verified?: boolean | null
           provider?: string | null
+          transfer_pin_hash?: string | null
           updated_at?: string
           user_id: string
         }
@@ -419,7 +421,44 @@ export type Database = {
           phone?: string | null
           phone_verified?: boolean | null
           provider?: string | null
+          transfer_pin_hash?: string | null
           updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      saving_wallet_transfers: {
+        Row: {
+          amount: number
+          created_at: string
+          frequency: string
+          id: string
+          notes: string | null
+          saving_category: string
+          source_of_funds: string
+          start_date: string | null
+          user_id: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          frequency?: string
+          id?: string
+          notes?: string | null
+          saving_category: string
+          source_of_funds: string
+          start_date?: string | null
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          frequency?: string
+          id?: string
+          notes?: string | null
+          saving_category?: string
+          source_of_funds?: string
+          start_date?: string | null
           user_id?: string
         }
         Relationships: []
@@ -599,6 +638,7 @@ export type Database = {
           created_at: string
           currency: string
           id: string
+          saving_balance: number | null
           updated_at: string
           user_id: string
           wallet_address: string | null
@@ -608,6 +648,7 @@ export type Database = {
           created_at?: string
           currency?: string
           id?: string
+          saving_balance?: number | null
           updated_at?: string
           user_id: string
           wallet_address?: string | null
@@ -617,6 +658,7 @@ export type Database = {
           created_at?: string
           currency?: string
           id?: string
+          saving_balance?: number | null
           updated_at?: string
           user_id?: string
           wallet_address?: string | null
@@ -788,6 +830,17 @@ export type Database = {
           p_description?: string
           p_recipient_id: string
           p_sender_id: string
+        }
+        Returns: boolean
+      }
+      transfer_to_saving_wallet: {
+        Args: {
+          p_amount: number
+          p_frequency?: string
+          p_notes?: string
+          p_saving_category: string
+          p_source_of_funds: string
+          p_start_date?: string
         }
         Returns: boolean
       }

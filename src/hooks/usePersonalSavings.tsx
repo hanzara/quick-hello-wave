@@ -28,17 +28,32 @@ interface SavingsTransaction {
 
 interface PersonalWallet {
   balance: number;
+  savingBalance: number;
   totalSavings: number;
   monthlyTarget: number;
   dailyTarget: number;
   currentStreak: number;
 }
 
+interface SavingTransfer {
+  id: string;
+  user_id: string;
+  amount: number;
+  source_of_funds: string;
+  saving_category: string;
+  notes?: string;
+  frequency: string;
+  start_date?: string;
+  created_at: string;
+}
+
 export const usePersonalSavings = () => {
   const [savingsGoals, setSavingsGoals] = useState<SavingsGoal[]>([]);
   const [savingsTransactions, setSavingsTransactions] = useState<SavingsTransaction[]>([]);
+  const [savingTransfers, setSavingTransfers] = useState<SavingTransfer[]>([]);
   const [walletData, setWalletData] = useState<PersonalWallet>({
     balance: 0,
+    savingBalance: 0,
     totalSavings: 0,
     monthlyTarget: 15000,
     dailyTarget: 500,
@@ -62,7 +77,8 @@ export const usePersonalSavings = () => {
       if (wallet) {
         setWalletData(prev => ({
           ...prev,
-          balance: wallet.balance || 0
+          balance: wallet.balance || 0,
+          savingBalance: wallet.saving_balance || 0
         }));
       }
     } catch (error) {
@@ -135,15 +151,64 @@ export const usePersonalSavings = () => {
     }
   };
 
-  const addSavings = async (amount: number, goalName?: string, frequency = 'one_time', notes?: string) => {
+  const fetchSavingTransfers = async () => {
+    try {
+      const { data: transfers, error } = await supabase
+        .from('saving_wallet_transfers')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(50);
+
+      if (error) {
+        console.error('Error fetching saving transfers:', error);
+        return;
+      }
+
+      setSavingTransfers(transfers || []);
+      
+      // Calculate current streak from transfers
+      const recentTransfers = transfers?.filter(t => t.frequency === 'one_time' || t.frequency === 'daily') || [];
+      const today = new Date();
+      let streak = 0;
+      
+      for (let i = 0; i < recentTransfers.length; i++) {
+        const transferDate = new Date(recentTransfers[i].created_at);
+        const daysDiff = Math.floor((today.getTime() - transferDate.getTime()) / (1000 * 60 * 60 * 24));
+        
+        if (daysDiff <= streak) {
+          streak++;
+        } else {
+          break;
+        }
+      }
+      
+      setWalletData(prev => ({
+        ...prev,
+        currentStreak: streak
+      }));
+    } catch (error) {
+      console.error('Error fetching saving transfers:', error);
+    }
+  };
+
+  const transferToSavingWallet = async (transferData: {
+    amount: number;
+    sourceOfFunds: string;
+    savingCategory: string;
+    notes?: string;
+    frequency: string;
+    startDate?: Date;
+  }) => {
     try {
       setIsLoading(true);
       
-      const { data, error } = await supabase.rpc('add_personal_savings', {
-        p_amount: amount,
-        p_goal_name: goalName || null,
-        p_frequency: frequency,
-        p_notes: notes || null
+      const { data, error } = await supabase.rpc('transfer_to_saving_wallet', {
+        p_amount: transferData.amount,
+        p_source_of_funds: transferData.sourceOfFunds,
+        p_saving_category: transferData.savingCategory,
+        p_notes: transferData.notes || null,
+        p_frequency: transferData.frequency,
+        p_start_date: transferData.startDate?.toISOString().split('T')[0] || null
       });
 
       if (error) {
@@ -154,20 +219,21 @@ export const usePersonalSavings = () => {
       await Promise.all([
         fetchWalletData(),
         fetchSavingsGoals(),
-        fetchSavingsTransactions()
+        fetchSavingsTransactions(),
+        fetchSavingTransfers()
       ]);
 
       toast({
-        title: "Savings Added Successfully!",
-        description: `KES ${amount} has been saved${goalName ? ` to your ${goalName} goal` : ''}.`,
+        title: "Transfer Successful!",
+        description: `KES ${transferData.amount} transferred to Saving Wallet for ${transferData.savingCategory}.`,
       });
 
       return data;
     } catch (error: any) {
-      console.error('Error adding savings:', error);
+      console.error('Error transferring to saving wallet:', error);
       toast({
-        title: "Error Adding Savings",
-        description: error.message || "Failed to add savings. Please try again.",
+        title: "Transfer Failed",
+        description: error.message || "Failed to transfer funds. Please try again.",
         variant: "destructive",
       });
       throw error;
@@ -212,7 +278,8 @@ export const usePersonalSavings = () => {
       await Promise.all([
         fetchWalletData(),
         fetchSavingsGoals(),
-        fetchSavingsTransactions()
+        fetchSavingsTransactions(),
+        fetchSavingTransfers()
       ]);
       setIsLoading(false);
     };
@@ -223,15 +290,17 @@ export const usePersonalSavings = () => {
   return {
     savingsGoals,
     savingsTransactions,
+    savingTransfers,
     walletData,
     isLoading,
-    addSavings,
+    transferToSavingWallet,
     getSavingsBreakdown,
     getSavingsData,
     refreshData: () => Promise.all([
       fetchWalletData(),
       fetchSavingsGoals(),
-      fetchSavingsTransactions()
+      fetchSavingsTransactions(),
+      fetchSavingTransfers()
     ])
   };
 };
