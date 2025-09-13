@@ -52,9 +52,9 @@ export const usePersonalSavings = () => {
       const { data: wallet, error: walletError } = await supabase
         .from('user_wallets')
         .select('*')
-        .single();
+        .maybeSingle();
 
-      if (walletError && walletError.code !== 'PGRST116') {
+      if (walletError) {
         console.error('Error fetching wallet:', walletError);
         return;
       }

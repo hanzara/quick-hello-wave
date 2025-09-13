@@ -310,6 +310,78 @@ export type Database = {
         }
         Relationships: []
       }
+      personal_savings_goals: {
+        Row: {
+          created_at: string
+          current_amount: number
+          goal_name: string
+          id: string
+          status: string
+          target_amount: number
+          target_date: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          current_amount?: number
+          goal_name: string
+          id?: string
+          status?: string
+          target_amount?: number
+          target_date?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          current_amount?: number
+          goal_name?: string
+          id?: string
+          status?: string
+          target_amount?: number
+          target_date?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      personal_savings_transactions: {
+        Row: {
+          amount: number
+          created_at: string
+          frequency: string
+          id: string
+          notes: string | null
+          payment_method: string
+          savings_goal_id: string | null
+          transaction_type: string
+          user_id: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          frequency?: string
+          id?: string
+          notes?: string | null
+          payment_method?: string
+          savings_goal_id?: string | null
+          transaction_type?: string
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          frequency?: string
+          id?: string
+          notes?: string | null
+          payment_method?: string
+          savings_goal_id?: string | null
+          transaction_type?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -677,6 +749,15 @@ export type Database = {
           p_reference?: string
           p_source?: string
           p_user_id: string
+        }
+        Returns: boolean
+      }
+      add_personal_savings: {
+        Args: {
+          p_amount: number
+          p_frequency?: string
+          p_goal_name?: string
+          p_notes?: string
         }
         Returns: boolean
       }
