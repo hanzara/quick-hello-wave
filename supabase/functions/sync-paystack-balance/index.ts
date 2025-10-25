@@ -73,89 +73,50 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    // Get current wallet balance
-    const { data: currentWallet, error: walletError } = await supabaseAdmin
+    // Fetch current wallet balance from database
+    const { data: wallet, error: walletError } = await supabaseAdmin
       .from('user_central_wallets')
-      .select('balance')
+      .select('balance, updated_at')
       .eq('user_id', userId)
-      .maybeSingle();
+      .single();
 
     if (walletError) {
       console.error('Error fetching wallet:', walletError);
       throw new Error('Failed to fetch wallet balance');
     }
 
-    const currentBalance = currentWallet?.balance || 0;
+    if (!wallet) {
+      // Create wallet if it doesn't exist
+      const { data: newWallet, error: createError } = await supabaseAdmin
+        .from('user_central_wallets')
+        .insert({ user_id: userId, balance: 0 })
+        .select()
+        .single();
 
-    // Get ALL successful deposits from ALL sources (M-Pesa, Paystack, Airtel Money, etc.)
-    // Check wallet_transactions for all deposit types
-    const { data: allDeposits, error: depositsError } = await supabaseAdmin
-      .from('wallet_transactions')
-      .select('amount')
-      .eq('user_id', userId)
-      .eq('transaction_type', 'deposit')
-      .eq('status', 'completed');
+      if (createError) {
+        console.error('Error creating wallet:', createError);
+        throw new Error('Failed to create wallet');
+      }
 
-    if (depositsError) {
-      console.error('Error fetching all deposits:', depositsError);
+      console.log('Created new wallet for user:', userId);
+      
+      return new Response(
+        JSON.stringify({
+          success: true,
+          balance: 0,
+          currency: 'KES',
+          synced_at: new Date().toISOString(),
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 200,
+        }
+      );
     }
 
-    // Also get M-Pesa transactions (legacy support)
-    const { data: mpesaDeposits, error: mpesaError } = await supabaseAdmin
-      .from('mpesa_transactions')
-      .select('amount')
-      .eq('user_id', userId)
-      .eq('status', 'success')
-      .eq('purpose', 'deposit');
-
-    if (mpesaError) {
-      console.error('Error fetching M-Pesa deposits:', mpesaError);
-    }
-
-    const walletDeposits = allDeposits?.reduce((sum, tx) => sum + (tx.amount || 0), 0) || 0;
-    const mpesaDepositTotal = mpesaDeposits?.reduce((sum, tx) => sum + (tx.amount || 0), 0) || 0;
-    const totalDeposits = walletDeposits + mpesaDepositTotal;
-    
-    console.log('Wallet deposits:', walletDeposits);
-    console.log('M-Pesa deposits:', mpesaDepositTotal);
-
-    // Get sum of all successful withdrawals
-    const { data: withdrawals, error: withdrawalsError } = await supabaseAdmin
-      .from('wallet_transactions')
-      .select('amount')
-      .eq('user_id', userId)
-      .eq('transaction_type', 'withdrawal')
-      .eq('status', 'completed');
-
-    if (withdrawalsError) {
-      console.error('Error fetching withdrawals:', withdrawalsError);
-    }
-
-    const totalWithdrawals = withdrawals?.reduce((sum, tx) => sum + Math.abs(tx.amount || 0), 0) || 0;
-
-    // Calculate expected balance
-    const expectedBalance = totalDeposits - totalWithdrawals;
-
-    console.log('Current balance:', currentBalance);
-    console.log('Total deposits:', totalDeposits);
-    console.log('Total withdrawals:', totalWithdrawals);
-    console.log('Expected balance:', expectedBalance);
-
-    // Update wallet to ensure it's accurate
-    const { error: updateError } = await supabaseAdmin
-      .from('user_central_wallets')
-      .upsert({
-        user_id: userId,
-        balance: expectedBalance,
-        updated_at: new Date().toISOString(),
-      }, {
-        onConflict: 'user_id'
-      });
-
-    if (updateError) {
-      console.error('Error updating wallet:', updateError);
-      throw new Error('Failed to update wallet balance');
-    }
+    const currentBalance = wallet.balance || 0;
+    console.log('Current wallet balance:', currentBalance);
+    console.log('Last updated:', wallet.updated_at);
 
     // Log the sync for audit trail
     await supabaseAdmin.from('audit_logs').insert({
@@ -164,22 +125,15 @@ serve(async (req) => {
       resource_type: 'wallet',
       resource_id: userId,
       new_values: { 
-        balance: expectedBalance,
-        deposits: totalDeposits,
-        withdrawals: totalWithdrawals
+        balance: currentBalance,
+        synced_at: new Date().toISOString()
       },
     });
 
     return new Response(
       JSON.stringify({
         success: true,
-        balance: expectedBalance,
-        details: {
-          deposits: totalDeposits,
-          withdrawals: totalWithdrawals,
-          current: currentBalance,
-          synced: expectedBalance
-        },
+        balance: currentBalance,
         currency: 'KES',
         synced_at: new Date().toISOString(),
       }),

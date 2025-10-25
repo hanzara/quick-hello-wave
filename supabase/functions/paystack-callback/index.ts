@@ -257,6 +257,12 @@ serve(async (req) => {
         console.log(`💼 Checking wallet update eligibility - Purpose: ${transaction.purpose}`);
         if (transaction.purpose === 'other' || transaction.purpose === 'wallet_topup' || transaction.purpose === 'add_money') {
           console.log('✅ Purpose matches wallet top-up criteria - processing wallet update');
+          console.log('💰 Amount breakdown:', {
+            gross: amountPaid,
+            fee: platformFee,
+            net: netAmount
+          });
+          
           // Get or create user central wallet
           let { data: centralWallet, error: centralWalletFetchError } = await supabase
             .from('user_central_wallets')
@@ -264,12 +270,15 @@ serve(async (req) => {
             .eq('user_id', transaction.user_id)
             .single();
 
+          console.log('📊 Current wallet state:', centralWallet);
+
           if (centralWalletFetchError && centralWalletFetchError.code !== 'PGRST116') {
             console.error('Error fetching central wallet:', centralWalletFetchError);
           }
 
           if (!centralWallet) {
             // Create central wallet if it doesn't exist
+            console.log('🆕 Creating new wallet for user:', transaction.user_id);
             const { data: newWallet, error: createWalletError } = await supabase
               .from('user_central_wallets')
               .insert({ user_id: transaction.user_id, balance: 0 })
@@ -277,14 +286,15 @@ serve(async (req) => {
               .single();
 
             if (createWalletError) {
-              console.error('Error creating central wallet:', createWalletError);
+              console.error('❌ Error creating central wallet:', createWalletError);
             } else {
               centralWallet = newWallet;
+              console.log('✅ Wallet created successfully');
             }
           }
 
           if (centralWallet) {
-            const newBalance = centralWallet.balance + netAmount;
+            const newBalance = (centralWallet.balance || 0) + netAmount;
             console.log('💰 Updating wallet balance:',{
               previous: centralWallet.balance,
               adding: netAmount,
