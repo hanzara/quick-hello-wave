@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -20,7 +20,7 @@ export const usePaystackBalanceSync = () => {
         throw new Error('No active session');
       }
 
-      const { data, error } = await supabase.functions.invoke('sync-wallet-balance', {
+      const { data, error } = await supabase.functions.invoke('sync-paystack-balance', {
         headers: {
           Authorization: `Bearer ${session.access_token}`
         },

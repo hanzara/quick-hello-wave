@@ -57,7 +57,7 @@ export const useStuckPaymentReconciliation = () => {
           if (data?.success) {
             toast({
               title: "Payment Credited ✅",
-              description: `KES ${data.amount?.toFixed(2)} has been added to your wallet`,
+              description: `KES ${((typeof data?.amount === 'number' ? data.amount : Number(data?.amount)) || Number(data?.netAmount) || Number(data?.balance?.added) || 0).toFixed(2)} has been added to your wallet`,
             });
             
             // Invalidate queries to refresh wallet balance

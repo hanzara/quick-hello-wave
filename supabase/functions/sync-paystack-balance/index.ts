@@ -114,9 +114,47 @@ serve(async (req) => {
       );
     }
 
-    const currentBalance = wallet.balance || 0;
+    let currentBalance = wallet.balance || 0;
     console.log('Current wallet balance:', currentBalance);
     console.log('Last updated:', wallet.updated_at);
+
+    // Reconcile from successful Paystack/Airtel payments if wallet seems out of date
+    try {
+      const { data: successfulTxs, error: txError } = await supabaseAdmin
+        .from('mpesa_transactions')
+        .select('amount, transaction_type, purpose, chama_id, status')
+        .eq('user_id', userId)
+        .eq('status', 'success')
+        .is('chama_id', null)
+        .in('transaction_type', ['paystack','airtel_money']);
+
+      if (txError) {
+        console.error('Error fetching successful transactions for reconciliation:', txError);
+      } else if (successfulTxs && successfulTxs.length > 0) {
+        const reconciled = successfulTxs.reduce((sum: number, tx: any) => {
+          const amt = typeof tx.amount === 'number' ? tx.amount : parseFloat(tx.amount || '0');
+          const net = amt - (amt * 0.025);
+          return sum + (isFinite(net) ? net : 0);
+        }, 0);
+
+        // Only update if discrepancy is significant (> 0.5 KES)
+        if (Math.abs((currentBalance || 0) - reconciled) > 0.5) {
+          console.log('Reconciling wallet balance from transactions:', { previous: currentBalance, reconciled });
+          const { error: updateErr } = await supabaseAdmin
+            .from('user_central_wallets')
+            .update({ balance: reconciled, updated_at: new Date().toISOString() })
+            .eq('user_id', userId);
+
+          if (updateErr) {
+            console.error('Failed to reconcile wallet balance:', updateErr);
+          } else {
+            currentBalance = reconciled;
+          }
+        }
+      }
+    } catch (e) {
+      console.error('Reconciliation error:', e);
+    }
 
     // Log the sync for audit trail
     await supabaseAdmin.from('audit_logs').insert({
