@@ -13,24 +13,27 @@ async function addWorker() {
     }
     
     try {
-        // Create auth user
-        const { data: authData, error: authError } = await supabase.auth.admin.createUser({
-            email: email,
-            password: password,
-            email_confirm: true,
-            user_metadata: {
+        // Call the edge function to create worker
+        const { data: sessionData } = await supabase.auth.getSession();
+        
+        const response = await fetch('https://yeqfmfgzqzvadhuoqxsl.supabase.co/functions/v1/create-worker', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${sessionData.session.access_token}`
+            },
+            body: JSON.stringify({
+                email: email,
+                password: password,
                 username: username
-            }
+            })
         });
         
-        if (authError) throw authError;
+        const result = await response.json();
         
-        // Create worker role
-        const { error: roleError } = await supabase
-            .from('user_roles')
-            .insert({ user_id: authData.user.id, role: 'worker' });
-        
-        if (roleError) throw roleError;
+        if (!response.ok) {
+            throw new Error(result.error || 'Failed to create worker');
+        }
         
         document.getElementById('workerName').value = '';
         document.getElementById('workerEmail').value = '';
