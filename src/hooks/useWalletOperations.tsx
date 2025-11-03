@@ -28,8 +28,15 @@ export const useWalletOperations = () => {
         throw new Error('You must be logged in to perform wallet operations');
       }
 
+      const payload: any = {
+        ...params,
+      };
+      if (params.operation === 'send' && !('recipient' in payload) && params.recipientMemberId) {
+        payload.recipient = params.recipientMemberId;
+      }
+
       const { data, error } = await supabase.functions.invoke('chama-wallet-ops', {
-        body: params,
+        body: payload,
         headers: {
           Authorization: `Bearer ${session.access_token}`
         }

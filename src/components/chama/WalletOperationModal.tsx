@@ -46,6 +46,11 @@ export const WalletOperationModal = ({
       return;
     }
 
+    // Ensure recipient selected for send
+    if (operation === 'send' && !recipientMemberId) {
+      return;
+    }
+
     // Handle top-up with different payment sources
     if (operation === 'topup') {
       if (paymentSource === 'central_wallet') {
@@ -348,7 +353,8 @@ export const WalletOperationModal = ({
               isPending || 
               stkPushMutation.isPending || 
               initializePayment.isPending ||
-              (operation === 'topup' && paymentSource !== 'central_wallet' && !phoneNumber && paymentSource !== 'paystack')
+              (operation === 'topup' && paymentSource !== 'central_wallet' && !phoneNumber && paymentSource !== 'paystack') ||
+              (operation === 'send' && !recipientMemberId)
             } 
             className="w-full"
           >
