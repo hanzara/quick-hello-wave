@@ -11,10 +11,14 @@ import {
   Clock,
   CheckCircle,
   XCircle,
-  Loader
+  Loader,
+  Trash2
 } from 'lucide-react';
 import CurrencyDisplay from '@/components/CurrencyDisplay';
 import { useNavigate } from 'react-router-dom';
+import { supabase } from '@/integrations/supabase/client';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useToast } from '@/hooks/use-toast';
 
 interface RecentTransaction {
   id: string;
@@ -35,6 +39,36 @@ export const RecentTransactions: React.FC<RecentTransactionsProps> = ({
   transactions 
 }) => {
   const navigate = useNavigate();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  const clearHistoryMutation = useMutation({
+    mutationFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      const { error } = await supabase
+        .from('wallet_transactions')
+        .delete()
+        .eq('user_id', user.id);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['dashboard-data'] });
+      toast({
+        title: "History Cleared",
+        description: "All transaction history has been deleted successfully.",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to clear transaction history",
+        variant: "destructive",
+      });
+    },
+  });
 
   if (!transactions || transactions.length === 0) {
     return (
@@ -131,11 +165,26 @@ export const RecentTransactions: React.FC<RecentTransactionsProps> = ({
   return (
     <Card className="border-0 shadow-lg">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <CreditCard className="h-5 w-5 text-primary" />
-          Recent Activity ({transactions.length})
-        </CardTitle>
-        <CardDescription>Your transaction history</CardDescription>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <CreditCard className="h-5 w-5 text-primary" />
+              Recent Activity ({transactions.length})
+            </CardTitle>
+            <CardDescription>Your transaction history</CardDescription>
+          </div>
+          {transactions.length > 0 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => clearHistoryMutation.mutate()}
+              disabled={clearHistoryMutation.isPending}
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              Clear History
+            </Button>
+          )}
+        </div>
       </CardHeader>
       <CardContent>
         <div className="space-y-4">
