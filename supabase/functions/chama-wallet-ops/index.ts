@@ -55,6 +55,9 @@ serve(async (req) => {
         break;
       
       case 'send':
+        if (!recipient) {
+          throw new Error('Recipient member ID is required');
+        }
         result = await handleSend(supabaseClient, member, amount, chamaId, recipient);
         break;
       
