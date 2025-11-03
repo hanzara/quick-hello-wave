@@ -274,8 +274,25 @@ async function handleWithdraw(supabase: any, member: any, amount: number, chamaI
 }
 
 async function handleSend(supabase: any, member: any, amount: number, chamaId: string, recipientMemberId: string) {
+  console.log('handleSend called with:', { 
+    senderId: member.id, 
+    senderBalance: member.mgr_balance, 
+    recipientMemberId, 
+    amount, 
+    chamaId 
+  });
+
   if (member.mgr_balance < amount) {
     throw new Error('Insufficient MGR wallet balance');
+  }
+
+  if (!recipientMemberId) {
+    throw new Error('Recipient member ID is required');
+  }
+
+  // Check if trying to send to self
+  if (member.id === recipientMemberId) {
+    throw new Error('Cannot send funds to yourself');
   }
 
   const { data: recipient, error: recipientError } = await supabase
@@ -286,8 +303,15 @@ async function handleSend(supabase: any, member: any, amount: number, chamaId: s
     .eq('is_active', true)
     .single();
 
-  if (recipientError || !recipient) {
-    throw new Error('Recipient not found');
+  console.log('Recipient lookup result:', { recipient, recipientError });
+
+  if (recipientError) {
+    console.error('Recipient lookup error:', recipientError);
+    throw new Error(`Failed to find recipient: ${recipientError.message}`);
+  }
+
+  if (!recipient) {
+    throw new Error('Recipient not found or not active in this chama');
   }
 
   const { error: senderError } = await supabase

@@ -27,16 +27,29 @@ export const SendToMemberModal: React.FC<SendToMemberModalProps> = ({
   const [recipientId, setRecipientId] = useState('');
   const { mutate: performOperation, isPending } = useChamaWalletOps();
 
-  const { data: members } = useQuery({
+  const { data: members, isLoading: loadingMembers } = useQuery({
     queryKey: ['chama-members', chamaId],
     queryFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
       const { data, error } = await supabase
         .from('chama_members')
-        .select('id, user_id, profiles:user_id(full_name, email)')
+        .select(`
+          id, 
+          user_id, 
+          profiles!chama_members_user_id_fkey(full_name, email)
+        `)
         .eq('chama_id', chamaId)
-        .eq('is_active', true);
+        .eq('is_active', true)
+        .neq('user_id', user.id);
       
-      if (error) throw error;
+      if (error) {
+        console.error('Error fetching members:', error);
+        throw error;
+      }
+      
+      console.log('Fetched members:', data);
       return data;
     },
     enabled: open && !!chamaId
@@ -47,6 +60,13 @@ export const SendToMemberModal: React.FC<SendToMemberModalProps> = ({
     if (isNaN(amountNum) || amountNum <= 0) return;
     if (amountNum > mgrBalance) return;
     if (!recipientId) return;
+
+    console.log('Sending funds:', { 
+      operation: 'send',
+      chamaId,
+      amount: amountNum,
+      recipient: recipientId
+    });
 
     performOperation({
       operation: 'send',
@@ -88,19 +108,28 @@ export const SendToMemberModal: React.FC<SendToMemberModalProps> = ({
                 <SelectValue placeholder="Choose a member" />
               </SelectTrigger>
               <SelectContent>
-                {members?.map((member) => (
-                  <SelectItem key={member.id} value={member.id}>
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-400 to-indigo-400 flex items-center justify-center text-white text-xs font-bold">
-                        {((member.profiles as any)?.full_name || (member.profiles as any)?.email || 'M')[0].toUpperCase()}
-                      </div>
-                      <div>
-                        <p className="font-medium">{(member.profiles as any)?.full_name || 'Member'}</p>
-                        <p className="text-xs text-muted-foreground">{(member.profiles as any)?.email}</p>
-                      </div>
-                    </div>
-                  </SelectItem>
-                ))}
+                {loadingMembers ? (
+                  <div className="p-4 text-center text-muted-foreground">Loading members...</div>
+                ) : !members || members.length === 0 ? (
+                  <div className="p-4 text-center text-muted-foreground">No other members found</div>
+                ) : (
+                  members.map((member) => {
+                    const profile = member.profiles as any;
+                    return (
+                      <SelectItem key={member.id} value={member.id}>
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-400 to-indigo-400 flex items-center justify-center text-white text-xs font-bold">
+                            {(profile?.full_name || profile?.email || 'M')[0].toUpperCase()}
+                          </div>
+                          <div>
+                            <p className="font-medium">{profile?.full_name || 'Member'}</p>
+                            <p className="text-xs text-muted-foreground">{profile?.email}</p>
+                          </div>
+                        </div>
+                      </SelectItem>
+                    );
+                  })
+                )}
               </SelectContent>
             </Select>
           </div>
