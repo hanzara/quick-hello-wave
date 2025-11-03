@@ -9,6 +9,7 @@ interface WalletOperation {
   walletType?: 'savings' | 'mgr';
   recipient?: string;
   paymentMethod?: string;
+  source?: 'central' | 'savings';
 }
 
 export const useChamaWalletOps = () => {
@@ -46,6 +47,7 @@ export const useChamaWalletOps = () => {
       queryClient.invalidateQueries({ queryKey: ['chama-members', variables.chamaId] });
       queryClient.invalidateQueries({ queryKey: ['chama-transactions', variables.chamaId] });
       queryClient.invalidateQueries({ queryKey: ['chama-notifications'] });
+      queryClient.invalidateQueries({ queryKey: ['central-wallet'] });
       
       toast({
         title: "Success",

@@ -27,8 +27,8 @@ serve(async (req) => {
       throw new Error('Unauthorized');
     }
 
-    const { operation, chamaId, amount, walletType, recipient, paymentMethod } = await req.json();
-    console.log('Wallet operation:', { operation, chamaId, amount, walletType, recipient, user: user.id });
+    const { operation, chamaId, amount, walletType, recipient, paymentMethod, source } = await req.json();
+    console.log('Wallet operation:', { operation, chamaId, amount, walletType, recipient, source, user: user.id });
 
     // Get member record
     const { data: member, error: memberError } = await supabaseClient
@@ -47,7 +47,7 @@ serve(async (req) => {
 
     switch (operation) {
       case 'topup':
-        result = await handleTopUp(supabaseClient, member, amount, chamaId);
+        result = await handleTopUp(supabaseClient, member, amount, chamaId, user.id, source || 'central');
         break;
       
       case 'withdraw':
@@ -80,20 +80,75 @@ serve(async (req) => {
   }
 });
 
-async function handleTopUp(supabase: any, member: any, amount: number, chamaId: string) {
-  if (member.savings_balance < amount) {
-    throw new Error('Insufficient savings balance');
+async function handleTopUp(supabase: any, member: any, amount: number, chamaId: string, userId: string, source: string = 'central') {
+  let sourceDescription = '';
+  
+  if (source === 'savings') {
+    // Top up from savings balance
+    if (member.savings_balance < amount) {
+      throw new Error('Insufficient savings balance');
+    }
+
+    const { error: updateError } = await supabase
+      .from('chama_members')
+      .update({
+        savings_balance: member.savings_balance - amount,
+        mgr_balance: member.mgr_balance + amount
+      })
+      .eq('id', member.id);
+
+    if (updateError) throw updateError;
+    sourceDescription = 'savings';
+  } else {
+    // Top up from central wallet (default)
+    const { data: centralWallet, error: walletError } = await supabase
+      .from('user_central_wallets')
+      .select('*')
+      .eq('user_id', userId)
+      .single();
+
+    if (walletError || !centralWallet) {
+      throw new Error('Central wallet not found');
+    }
+
+    if (centralWallet.balance < amount) {
+      throw new Error('Insufficient central wallet balance');
+    }
+
+    // Deduct from central wallet
+    const { error: walletUpdateError } = await supabase
+      .from('user_central_wallets')
+      .update({
+        balance: centralWallet.balance - amount,
+        updated_at: new Date().toISOString()
+      })
+      .eq('user_id', userId);
+
+    if (walletUpdateError) throw walletUpdateError;
+
+    // Add to MGR balance
+    const { error: mgrUpdateError } = await supabase
+      .from('chama_members')
+      .update({
+        mgr_balance: member.mgr_balance + amount
+      })
+      .eq('id', member.id);
+
+    if (mgrUpdateError) throw mgrUpdateError;
+
+    // Record wallet transaction
+    await supabase
+      .from('wallet_transactions')
+      .insert({
+        user_id: userId,
+        type: 'chama_mgr_topup',
+        amount: amount,
+        description: 'Transfer to MGR wallet',
+        status: 'completed'
+      });
+
+    sourceDescription = 'central wallet';
   }
-
-  const { error: updateError } = await supabase
-    .from('chama_members')
-    .update({
-      savings_balance: member.savings_balance - amount,
-      mgr_balance: member.mgr_balance + amount
-    })
-    .eq('id', member.id);
-
-  if (updateError) throw updateError;
 
   await supabase
     .from('chama_wallet_transactions')
@@ -101,7 +156,7 @@ async function handleTopUp(supabase: any, member: any, amount: number, chamaId: 
       chama_id: chamaId,
       transaction_type: 'transfer',
       amount: amount,
-      description: `Top-up to MGR wallet from savings`,
+      description: `Top-up to MGR wallet from ${sourceDescription}`,
       processed_by: member.id,
       status: 'completed'
     });
@@ -112,13 +167,16 @@ async function handleTopUp(supabase: any, member: any, amount: number, chamaId: 
       chama_id: chamaId,
       member_id: member.id,
       activity_type: 'wallet_topup',
-      description: `Topped up MGR wallet with KES ${amount}`,
+      description: `Topped up MGR wallet with KES ${amount} from ${sourceDescription}`,
       amount: amount
     });
 
   return {
-    message: `Successfully topped up KES ${amount} to your MGR wallet`,
-    data: { newSavingsBalance: member.savings_balance - amount, newMgrBalance: member.mgr_balance + amount }
+    message: `Successfully topped up KES ${amount} to your MGR wallet from ${sourceDescription}`,
+    data: { 
+      newMgrBalance: member.mgr_balance + amount,
+      ...(source === 'savings' ? { newSavingsBalance: member.savings_balance - amount } : {})
+    }
   };
 }
 

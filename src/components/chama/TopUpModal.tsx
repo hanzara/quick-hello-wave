@@ -3,7 +3,9 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { useChamaWalletOps } from '@/hooks/useChamaWalletOps';
+import { useCentralWallet } from '@/hooks/useWalletOperations';
 import CurrencyDisplay from '@/components/CurrencyDisplay';
 import { Loader2 } from 'lucide-react';
 
@@ -21,7 +23,12 @@ export const TopUpModal: React.FC<TopUpModalProps> = ({
   savingsBalance
 }) => {
   const [amount, setAmount] = useState('');
+  const [source, setSource] = useState<'central' | 'savings'>('central');
   const { mutate: performOperation, isPending } = useChamaWalletOps();
+  const { data: centralWalletData } = useCentralWallet();
+  
+  const centralBalance = centralWalletData?.balance || 0;
+  const maxAmount = source === 'central' ? centralBalance : savingsBalance;
 
   const handleTopUp = () => {
     const amountNum = parseFloat(amount);
@@ -30,15 +37,16 @@ export const TopUpModal: React.FC<TopUpModalProps> = ({
       return;
     }
     
-    if (amountNum > savingsBalance) {
+    if (amountNum > maxAmount) {
       return;
     }
 
     performOperation({
       operation: 'topup',
       chamaId,
-      amount: amountNum
-    }, {
+      amount: amountNum,
+      source
+    } as any, {
       onSuccess: (data) => {
         console.log('Top-up successful:', data);
         onOpenChange(false);
@@ -53,14 +61,32 @@ export const TopUpModal: React.FC<TopUpModalProps> = ({
         <DialogHeader>
           <DialogTitle>Top Up Merry-Go-Round Wallet</DialogTitle>
           <DialogDescription>
-            Transfer funds from your Chama Savings to your Merry-Go-Round wallet
+            Transfer funds to your Merry-Go-Round wallet
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
           <div>
-            <Label>Available in Savings</Label>
-            <CurrencyDisplay amount={savingsBalance} className="text-lg font-semibold" />
+            <Label>Source of Funds</Label>
+            <RadioGroup value={source} onValueChange={(v) => setSource(v as 'central' | 'savings')} className="mt-2">
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="central" id="central" />
+                <Label htmlFor="central" className="font-normal cursor-pointer">
+                  Central Wallet (<CurrencyDisplay amount={centralBalance} />)
+                </Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="savings" id="savings" />
+                <Label htmlFor="savings" className="font-normal cursor-pointer">
+                  Chama Savings (<CurrencyDisplay amount={savingsBalance} />)
+                </Label>
+              </div>
+            </RadioGroup>
+          </div>
+
+          <div>
+            <Label>Available Balance</Label>
+            <CurrencyDisplay amount={maxAmount} className="text-lg font-semibold" />
           </div>
 
           <div>
@@ -72,7 +98,7 @@ export const TopUpModal: React.FC<TopUpModalProps> = ({
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
               min="0"
-              max={savingsBalance}
+              max={maxAmount}
               step="0.01"
             />
           </div>
@@ -84,7 +110,7 @@ export const TopUpModal: React.FC<TopUpModalProps> = ({
           </Button>
           <Button 
             onClick={handleTopUp}
-            disabled={isPending || !amount || parseFloat(amount) <= 0 || parseFloat(amount) > savingsBalance}
+            disabled={isPending || !amount || parseFloat(amount) <= 0 || parseFloat(amount) > maxAmount}
           >
             {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Top Up
