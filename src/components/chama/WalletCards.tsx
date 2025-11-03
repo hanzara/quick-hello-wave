@@ -6,6 +6,7 @@ import { Wallet, Lock, Unlock, ArrowUp, ArrowDown, Send } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { WalletOperationModal } from './WalletOperationModal';
 import { useChamaMembers } from '@/hooks/useChamaMembers';
+import { useAuth } from '@/hooks/useAuth';
 
 interface WalletCardsProps {
   chamaId: string;
@@ -27,6 +28,7 @@ export const WalletCards: React.FC<WalletCardsProps> = ({
   const [sendOpen, setSendOpen] = useState(false);
   const [operationType, setOperationType] = useState<'topup' | 'withdraw' | 'send'>('topup');
   const { data: members } = useChamaMembers(chamaId);
+  const { user } = useAuth();
 
   const handleOpenModal = (type: 'topup' | 'withdraw' | 'send') => {
     setOperationType(type);
@@ -141,7 +143,7 @@ export const WalletCards: React.FC<WalletCardsProps> = ({
             chamaId={chamaId}
             operation="send"
             currentMGRBalance={mgrBalance}
-            members={members}
+            members={members?.filter(m => m.user_id !== user?.id)}
           />
 
           {mgrBalance > 0 && (

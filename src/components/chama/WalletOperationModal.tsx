@@ -285,11 +285,28 @@ export const WalletOperationModal = ({
                   <SelectValue placeholder="Select member" />
                 </SelectTrigger>
                 <SelectContent>
-                  {members?.map((member) => (
-                    <SelectItem key={member.id} value={member.id}>
-                      {member.user_id || 'Unknown Member'}
-                    </SelectItem>
-                  )) || []}
+                  {!members || members.length === 0 ? (
+                    <div className="p-4 text-center text-muted-foreground">No other members available</div>
+                  ) : (
+                    members.map((member: any) => {
+                      const displayName = member.profiles?.display_name || member.profiles?.email || 'Member';
+                      const displayEmail = member.profiles?.email || 'No email';
+                      
+                      return (
+                        <SelectItem key={member.id} value={member.id}>
+                          <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-400 to-indigo-400 flex items-center justify-center text-white text-xs font-bold">
+                              {displayName[0].toUpperCase()}
+                            </div>
+                            <div>
+                              <p className="font-medium">{displayName}</p>
+                              <p className="text-xs text-muted-foreground">{displayEmail}</p>
+                            </div>
+                          </div>
+                        </SelectItem>
+                      );
+                    })
+                  )}
                 </SelectContent>
               </Select>
             </div>

@@ -350,7 +350,7 @@ const WalletDashboard: React.FC<WalletDashboardProps> = ({ user, chamaId, userRo
         chamaId={chamaId}
         operation="send"
         currentMGRBalance={mgrBalance}
-        members={members}
+        members={members?.filter(m => m.user_id !== user?.id)}
       />
     </div>
   );

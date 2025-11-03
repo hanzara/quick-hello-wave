@@ -28,29 +28,48 @@ export const SendToMemberModal: React.FC<SendToMemberModalProps> = ({
   const { mutate: performOperation, isPending } = useChamaWalletOps();
 
   const { data: members, isLoading: loadingMembers } = useQuery({
-    queryKey: ['chama-members', chamaId],
+    queryKey: ['chama-members-send', chamaId],
     queryFn: async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      const { data, error } = await supabase
+      // First get members
+      const { data: memberData, error: memberError } = await supabase
         .from('chama_members')
-        .select(`
-          id, 
-          user_id, 
-          profiles!chama_members_user_id_fkey(full_name, email)
-        `)
+        .select('id, user_id')
         .eq('chama_id', chamaId)
         .eq('is_active', true)
         .neq('user_id', user.id);
       
-      if (error) {
-        console.error('Error fetching members:', error);
-        throw error;
+      if (memberError) {
+        console.error('Error fetching members:', memberError);
+        throw memberError;
       }
+
+      if (!memberData || memberData.length === 0) {
+        return [];
+      }
+
+      // Then get their profiles
+      const userIds = memberData.map(m => m.user_id);
+      const { data: profileData, error: profileError } = await supabase
+        .from('user_profiles_enhanced')
+        .select('user_id, full_name, email')
+        .in('user_id', userIds);
+
+      if (profileError) {
+        console.error('Error fetching profiles:', profileError);
+        throw profileError;
+      }
+
+      // Merge member and profile data
+      const membersWithProfiles = memberData.map(member => ({
+        ...member,
+        profile: profileData?.find(p => p.user_id === member.user_id)
+      }));
       
-      console.log('Fetched members:', data);
-      return data;
+      console.log('Fetched members with profiles:', membersWithProfiles);
+      return membersWithProfiles;
     },
     enabled: open && !!chamaId
   });
@@ -114,16 +133,19 @@ export const SendToMemberModal: React.FC<SendToMemberModalProps> = ({
                   <div className="p-4 text-center text-muted-foreground">No other members found</div>
                 ) : (
                   members.map((member) => {
-                    const profile = member.profiles as any;
+                    const profile = member.profile;
+                    const displayName = profile?.full_name || profile?.email || 'Member';
+                    const displayEmail = profile?.email || 'No email';
+                    
                     return (
                       <SelectItem key={member.id} value={member.id}>
                         <div className="flex items-center gap-2">
                           <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-400 to-indigo-400 flex items-center justify-center text-white text-xs font-bold">
-                            {(profile?.full_name || profile?.email || 'M')[0].toUpperCase()}
+                            {displayName[0].toUpperCase()}
                           </div>
                           <div>
-                            <p className="font-medium">{profile?.full_name || 'Member'}</p>
-                            <p className="text-xs text-muted-foreground">{profile?.email}</p>
+                            <p className="font-medium">{displayName}</p>
+                            <p className="text-xs text-muted-foreground">{displayEmail}</p>
                           </div>
                         </div>
                       </SelectItem>
